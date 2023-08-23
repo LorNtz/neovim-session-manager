@@ -117,6 +117,18 @@ function utils.save_session(filename)
   vim.notify(message, vim.log.levels.INFO, { title = "Session Manager" })
 end
 
+--- Replaces symbols into separators and colons to transform filename into a session directory.
+---@param filename string: Filename with expressions to replace.
+---@return table: Session directory
+function utils.session_filename_to_dir(filename)
+  -- Get session filename.
+  local dir = filename:sub(#tostring(config.sessions_dir) + 2)
+
+  dir = dir:gsub(config.colon_replacer, ':')
+  dir = dir:gsub(config.path_replacer, Path.path.sep)
+  return Path:new(dir)
+end
+
 ---@return table
 function utils.get_sessions()
   local sessions = {}
