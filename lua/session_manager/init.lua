@@ -6,7 +6,9 @@ local session_manager = {}
 
 --- Apply user settings.
 ---@param values table
-function session_manager.setup(values) setmetatable(config, { __index = vim.tbl_extend('force', config.defaults, values) }) end
+function session_manager.setup(values)
+  setmetatable(config, { __index = vim.tbl_extend('force', config.defaults, values) })
+end
 
 --- Selects a session a loads it.
 ---@param discard_current boolean: If `true`, do not check for unsaved buffers.
@@ -32,6 +34,13 @@ function session_manager.load_last_session(discard_current)
   local last_session = utils.get_last_session_filename()
   if last_session then
     utils.load_session(last_session, discard_current)
+  else
+    vim.notify("Oops! The last session file doesn't seem to exist anymore. Try to load a specific session file.",
+      vim.log.levels.WARN,
+      {
+        title = "Session Manager"
+      }
+    )
   end
 end
 
@@ -43,8 +52,55 @@ function session_manager.load_current_dir_session(discard_current)
   end
 end
 
---- Saves a session for the current working directory.
-function session_manager.save_current_session() utils.save_session(utils.dir_to_session_filename().filename) end
+function session_manager.save_current_session()
+  local filename = utils.active_session_file
+  if filename ~= nil then
+    utils.save_session(filename)
+  else
+    vim.notify(
+      'You are not in any active session right now!\nTry other saving options instead.',
+      vim.log.levels.ERROR,
+      {
+        title = "Session Manager"
+      }
+    )
+  end
+end
+
+--- Saves a session to a new file for the current working directory.
+function session_manager.save_current_session_to_new_file()
+  vim.ui.input({
+    prompt = 'Provide a Name for the New Session (Empty for a Default Name)',
+  },
+    function (input)
+      local filename
+      if input == nil or input == '' then
+        filename = utils.dir_to_session_filename().filename
+      else
+        filename = config.sessions_dir .. input .. '.vim'
+      end
+      utils.save_session(filename)
+    end
+  )
+end
+
+--- Saves a session to a existing file for the current working directory.
+function session_manager.save_current_to_existing_file()
+  local sessions = utils.get_sessions()
+  local display_names = {}
+  for _, session in ipairs(sessions) do
+    table.insert(display_names, utils.shorten_path(session.dir))
+  end
+
+  vim.ui.select(display_names, {
+    prompt = 'Select the File to Be Saved to'
+  }, function (choice)
+      if choice ~= nil and choice ~= '' then
+        local filename = config.sessions_dir .. choice
+        utils.save_session(filename)
+      end
+  end)
+end
 
 --- Loads a session based on settings. Executed after starting the editor.
 function session_manager.autoload_session()
@@ -65,7 +121,7 @@ function session_manager.delete_session()
     table.insert(display_names, utils.shorten_path(session.dir))
   end
 
-  vim.ui.select(display_names, { prompt = 'Delete Session' }, function(_, idx)
+  vim.ui.select(display_names, { prompt = 'Select and Press <Enter> to Delete a Session' }, function(_, idx)
     if idx then
       Path:new(sessions[idx].filename):rm()
       session_manager.delete_session()

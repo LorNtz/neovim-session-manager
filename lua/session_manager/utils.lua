@@ -1,7 +1,10 @@
 local config = require('session_manager.config')
 local scandir = require('plenary.scandir')
 local Path = require('plenary.path')
-local utils = { is_session = false }
+local utils = {
+  is_session = false,
+  active_session_file = nil
+}
 
 local function close_unused_lsp_clients()
   local bufs = vim.api.nvim_list_bufs()
@@ -37,12 +40,10 @@ function utils.get_last_session_filename()
   local most_recent_filename = nil
   local most_recent_timestamp = 0
   for _, session_filename in ipairs(scandir.scan_dir(tostring(config.sessions_dir))) do
-    if utils.session_filename_to_dir(session_filename):is_dir() then
-      local timestamp = vim.fn.getftime(session_filename)
-      if most_recent_timestamp < timestamp then
-        most_recent_timestamp = timestamp
-        most_recent_filename = session_filename
-      end
+    local timestamp = vim.fn.getftime(session_filename)
+    if most_recent_timestamp < timestamp then
+      most_recent_timestamp = timestamp
+      most_recent_filename = session_filename
     end
   end
   return most_recent_filename
@@ -78,6 +79,7 @@ function utils.load_session(filename, discard_current)
     vim.api.nvim_buf_delete(current_buffer, { force = true })
 
     utils.is_session = true
+    utils.active_session_file = filename
     vim.api.nvim_exec_autocmds('User', { pattern = 'SessionLoadPre' })
     vim.api.nvim_command('silent source ' .. filename)
     vim.api.nvim_exec_autocmds('User', { pattern = 'SessionLoadPost' })
@@ -108,6 +110,8 @@ function utils.save_session(filename)
   vim.api.nvim_exec_autocmds('User', { pattern = 'SessionSavePre' })
   vim.api.nvim_command('mksession! ' .. filename)
   vim.api.nvim_exec_autocmds('User', { pattern = 'SessionSavePost' })
+  local message = "Session has been saved to: \n" .. filename
+  vim.notify(message, vim.log.levels.INFO, { title = "Session Manager" })
 end
 
 ---@return table
@@ -115,11 +119,12 @@ function utils.get_sessions()
   local sessions = {}
   for _, session_filename in ipairs(scandir.scan_dir(tostring(config.sessions_dir))) do
     local dir = utils.session_filename_to_dir(session_filename)
-    if dir:is_dir() then
-      table.insert(sessions, { timestamp = vim.fn.getftime(session_filename), filename = session_filename, dir = dir })
-    else
-      Path:new(session_filename):rm()
-    end
+    table.insert(sessions, { timestamp = vim.fn.getftime(session_filename), filename = session_filename, dir = dir })
+    -- if dir:is_dir() then
+    --   table.insert(sessions, { timestamp = vim.fn.getftime(session_filename), filename = session_filename, dir = dir })
+    -- else
+    --   Path:new(session_filename):rm()
+    -- end
   end
   table.sort(sessions, function(a, b) return a.timestamp > b.timestamp end)
 
