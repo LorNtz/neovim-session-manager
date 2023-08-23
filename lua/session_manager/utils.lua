@@ -50,7 +50,7 @@ function utils.get_last_session_filename()
 end
 
 ---@param filename string
----@param discard_current boolean
+---@param discard_current boolean?
 function utils.load_session(filename, discard_current)
   if not discard_current then
     -- Ask to save files in current session before closing them.
@@ -78,12 +78,15 @@ function utils.load_session(filename, discard_current)
     end
     vim.api.nvim_buf_delete(current_buffer, { force = true })
 
+    local swapfile = vim.o.swapfile
+    vim.o.swapfile = false
     utils.is_session = true
     utils.active_session_file = filename
     vim.api.nvim_exec_autocmds('User', { pattern = 'SessionLoadPre' })
     vim.api.nvim_command('silent source ' .. filename)
     vim.api.nvim_exec_autocmds('User', { pattern = 'SessionLoadPost' })
     close_unused_lsp_clients()
+    vim.o.swapfile = swapfile
   end)
 end
 
@@ -128,34 +131,21 @@ function utils.get_sessions()
   end
   table.sort(sessions, function(a, b) return a.timestamp > b.timestamp end)
 
-  -- If the last session is the current one, then preselect the previous one.
-  if #sessions >= 2 and sessions[1].filename == utils.dir_to_session_filename().filename then
-    sessions[1], sessions[2] = sessions[2], sessions[1]
+  -- If we are in a session already, don't list the current session.
+  if utils.is_session then
+    local cwd = vim.loop.cwd()
+    local is_current_session = cwd and config.dir_to_session_filename(cwd).filename == sessions[1].filename
+    if is_current_session then
+      table.remove(sessions, 1)
+    end
+  end
+
+  -- If no sessions to list, send a notification.
+  if #sessions == 0 then
+    vim.notify('The only available session is your current session. Nothing to select from.', vim.log.levels.INFO)
   end
 
   return sessions
-end
-
---- Replaces symbols into separators and colons to transform filename into a session directory.
----@param filename string: Filename with expressions to replace.
----@return table: Session directory
-function utils.session_filename_to_dir(filename)
-  -- Get session filename.
-  local dir = filename:sub(#tostring(config.sessions_dir) + 2)
-
-  dir = dir:gsub(config.colon_replacer, ':')
-  dir = dir:gsub(config.path_replacer, Path.path.sep)
-  return Path:new(dir)
-end
-
---- Replaces separators and colons into special symbols to transform session directory into a filename.
----@param dir table?: Path to session directory. Defaults to the current working directory if `nil`.
----@return table: Session filename.
-function utils.dir_to_session_filename(dir)
-  local filename = dir and dir.filename or vim.loop.cwd()
-  filename = filename:gsub(':', config.colon_replacer)
-  filename = filename:gsub(Path.path.sep, config.path_replacer)
-  return Path:new(config.sessions_dir):joinpath(filename)
 end
 
 ---@param buffer number: buffer ID.
